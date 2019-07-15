@@ -22,7 +22,7 @@ dataset = DataSet(DATASET_PATH)
 
 
 # step 2 : select the MeterGroup foreach building
-metergroup = dataset.buildings[4].elec 
+metergroup = dataset.buildings[5].elec 
 
 #Declare a Pandas DataFrame
 df = pd.DataFrame(columns=['Start Time','End Time','Active Appliances'])
@@ -33,38 +33,63 @@ for meter in metergroup.submeters().meters:
     print ("min_off_duration :", meter.min_off_duration(),
            "\t min_on_duration :", meter.min_on_duration() ,
            "\t on_power_threshold :", meter.on_power_threshold())
-    # Get the activation series (List of Pandas Series )
-    activation = meter.activation_series()
+    # Get the activations series (List of Pandas Series )
+    activations = meter.activation_series()
     
     # foreach activation in the Series
-    for act in activation:
+    for act in activations:
         #print(act)
+        active_power= np.float32(0.0)
+        active_power_reset_value = False
         #foreach value in the Series.index ( data type :)
-        for i in act.index:
-            # calcul of start 
+        for i in act.index:  
+            #test if power reset value is True 
+            if(active_power_reset_value):
+                # Add row to data to DataFrame
+                meter_string = str(meter.identifier.instance) +"-"+str(active_power)
+                #print(meter_string)
+                if(df.index.contains(start_time)):
+                    #update the row 'Active Appliances' in the DataFrame
+                    df.loc[start_time]['Active Appliances'].add(meter_string) 
+                else:
+                    #added the row to DataFrame
+                    df.loc[start_time]=[start_time,end_time,set([meter_string])]
+                #Reset active_power value and reset active_power_reset_value
+                active_power= np.float32(0.0)
+                active_power_reset_value = False
+            else:
+                # Agregate the active power value
+                active_power+= act.get(i)
+            
+            # calcul of : start_time & end_time & active_power
             if(i.minute<=30):
+                #start time
                 start_time = pd.Timestamp(year=i.year, month=i.month, day=i.day, hour=i.hour, minute=0)
                 #end time
                 end_time = pd.Timestamp(year=i.year, month=i.month, day=i.day, hour=i.hour, minute=30)
-                #print(i ,' ===>',start_time , ' @@', end_time)
+                #active power reset test
+                if(i.minute==30):
+                    if(i.second>=54):
+                        active_power_reset_value = not (i.minute==30 & i.second>=54) 
+                    
+                #print('index is ',i ,' ===>',start_time , ' @@', end_time , ' @@', active_power, ' @@',act.get(i)) 
             else:
+                #start time
                 start_time = pd.Timestamp(year=i.year, month=i.month, day=i.day, hour=i.hour, minute=30)
                 #end time
                 if(i.hour==23):
                     hour=0
                 else:
                     hour=i.hour+1
-                end_time = pd.Timestamp(year=i.year, month=i.month, day=i.day, hour=hour, minute=0)
-                #print(i ,' ===>',start_time , ' @@', end_time)
+                end_time = pd.Timestamp(year=i.year, month=i.month, day=i.day, hour=hour, minute=0)  
+                #active power reset test 
+                if(i.minute==59):
+                    if(i.second>=54):
+                        active_power_reset_value = not (i.minute==59 & i.second>=54)
                 
-            # Add row to data
-            if(df.index.contains(start_time)):
-                #update the row 'Active Appliances'
-                #appliances_set = df.loc[start_time]['Active Appliances']
-                df.loc[start_time]['Active Appliances'].add(meter.identifier.instance)
-                #print(type(df.loc[start_time]['Active Appliances']))
-            else:
-                df.loc[start_time]=[start_time,end_time,set([meter.identifier.instance])]
+                #print('index is ',i ,' ===>',start_time , ' @@', end_time , ' @@', active_power, ' @@',act.get(i)) 
+                
+            
                          
         # end activation
         #print(len(start_times))
